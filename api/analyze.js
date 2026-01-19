@@ -103,28 +103,43 @@ async function getTranscript(videoId) {
 }
 
 async function getTranscriptViaSupadata(videoId) {
+  console.log('Fetching transcript via Supadata for:', videoId);
+
   const response = await fetch(`https://api.supadata.ai/v1/youtube/transcript?videoId=${videoId}&text=false`, {
     headers: {
       'x-api-key': SUPADATA_API_KEY,
     }
   });
 
+  console.log('Supadata response status:', response.status);
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
+    console.error('Supadata error:', errorData);
     throw new Error(errorData.message || `Supadata API error: ${response.status}`);
   }
 
   const data = await response.json();
+  console.log('Supadata data keys:', Object.keys(data));
 
-  if (!data.content || data.content.length === 0) {
-    throw new Error('No transcript content from Supadata');
+  if (!data.content) {
+    throw new Error('No content field in Supadata response');
+  }
+
+  if (!Array.isArray(data.content)) {
+    throw new Error('Supadata content is not an array');
+  }
+
+  if (data.content.length === 0) {
+    throw new Error('Supadata content array is empty');
   }
 
   // Convert Supadata format to our format
+  // Supadata returns offset/duration in milliseconds already
   return data.content.map(item => ({
-    text: item.text,
-    offset: (item.offset || 0) * 1000,
-    duration: (item.duration || 2) * 1000
+    text: item.text || '',
+    offset: item.offset || 0,
+    duration: item.duration || 2000
   }));
 }
 
@@ -375,21 +390,28 @@ export default async function handler(req, res) {
     }
 
     const { fullText, totalDuration } = prepareTranscriptForAnalysis(transcript);
-    const analysis = await analyzeWithClaude(fullText, videoInfo);
+    console.log('Transcript prepared, calling Claude...');
 
-    return res.status(200).json({
+    const analysis = await analyzeWithClaude(fullText, videoInfo);
+    console.log('Claude analysis complete, keys:', Object.keys(analysis));
+
+    // Ensure response has all required fields with proper defaults
+    const response = {
       videoId,
-      title: videoInfo.title,
-      channelTitle: videoInfo.channelTitle,
+      title: videoInfo.title || 'Unknown Title',
+      channelTitle: videoInfo.channelTitle || 'Unknown Channel',
       duration: formatDuration(videoInfo.duration || totalDuration),
-      viewCount: formatViewCount(videoInfo.viewCount),
-      publishedAt: formatDate(videoInfo.publishedAt),
-      tldr: analysis.tldr,
-      keyTopics: analysis.keyTopics,
-      chapters: analysis.chapters,
-      keyTakeaways: analysis.keyTakeaways,
-      shouldWatch: analysis.shouldWatch
-    });
+      viewCount: formatViewCount(videoInfo.viewCount || '0'),
+      publishedAt: formatDate(videoInfo.publishedAt || new Date().toISOString()),
+      tldr: analysis.tldr || '',
+      keyTopics: Array.isArray(analysis.keyTopics) ? analysis.keyTopics : [],
+      chapters: Array.isArray(analysis.chapters) ? analysis.chapters : [],
+      keyTakeaways: Array.isArray(analysis.keyTakeaways) ? analysis.keyTakeaways : [],
+      shouldWatch: analysis.shouldWatch || ''
+    };
+
+    console.log('Sending response with keys:', Object.keys(response));
+    return res.status(200).json(response);
   } catch (error) {
     console.error('Analysis error:', error);
 
