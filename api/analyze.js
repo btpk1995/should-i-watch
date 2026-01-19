@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { YoutubeTranscript } from 'youtube-transcript';
+import { Innertube } from 'youtubei.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -22,10 +22,33 @@ function formatDuration(totalSeconds) {
 
 async function getTranscript(videoId) {
   try {
-    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-    return transcript;
+    const youtube = await Innertube.create();
+    const info = await youtube.getInfo(videoId);
+    const transcriptInfo = await info.getTranscript();
+
+    if (!transcriptInfo || !transcriptInfo.transcript || !transcriptInfo.transcript.content) {
+      throw new Error('No transcript available');
+    }
+
+    const segments = transcriptInfo.transcript.content.body.initial_segments;
+
+    if (!segments || segments.length === 0) {
+      throw new Error('No transcript segments found');
+    }
+
+    const transcript = segments.map(segment => ({
+      text: segment.snippet.text,
+      offset: parseInt(segment.start_ms) || 0,
+      duration: parseInt(segment.end_ms) - parseInt(segment.start_ms) || 0
+    }));
+
+    const title = info.basic_info?.title || null;
+    const duration = info.basic_info?.duration || 0;
+
+    return { transcript, title, duration };
   } catch (error) {
-    if (error.message?.includes('disabled')) {
+    console.error('Transcript fetch error:', error.message);
+    if (error.message?.includes('disabled') || error.message?.includes('No transcript')) {
       throw new Error('This video does not have captions available.');
     }
     if (error.message?.includes('not found') || error.message?.includes('unavailable')) {
@@ -143,7 +166,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const transcript = await getTranscript(videoId);
+    const { transcript, title, duration } = await getTranscript(videoId);
 
     if (!transcript || transcript.length === 0) {
       return res.status(400).json({
@@ -156,8 +179,8 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       videoId,
-      duration: formatDuration(totalDuration),
-      title: analysis.title || null,
+      title: title,
+      duration: formatDuration(duration || totalDuration),
       summary: analysis.summary,
       topics: analysis.topics
     });
