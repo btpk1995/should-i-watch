@@ -10,12 +10,14 @@
   const videoLink = document.getElementById('video-link');
   const videoTitle = document.getElementById('video-title');
   const channelName = document.getElementById('channel-name');
+  const channelInitial = document.getElementById('channel-initial');
+  const likeCount = document.getElementById('like-count');
   const videoDuration = document.getElementById('video-duration');
   const viewCount = document.getElementById('view-count');
   const publishDate = document.getElementById('publish-date');
-  const watchLink = document.getElementById('watch-link');
   const tldrEl = document.getElementById('tldr');
   const keyTopicsEl = document.getElementById('key-topics');
+  const summaryTextEl = document.getElementById('summary-text');
   const chaptersListEl = document.getElementById('chapters-list');
   const keyTakeawaysEl = document.getElementById('key-takeaways');
   const shouldWatchEl = document.getElementById('should-watch');
@@ -66,7 +68,6 @@
   }
 
   function renderMarkdown(text) {
-    // Simple markdown rendering for bold text
     return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   }
 
@@ -80,15 +81,24 @@
       this.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
     };
     videoLink.href = youtubeUrl;
-    watchLink.href = youtubeUrl;
     videoTitle.textContent = data.title || 'Video Analysis';
-    channelName.textContent = data.channelTitle || 'Unknown Channel';
+
+    // Channel info
+    const channel = data.channelTitle || 'Unknown Channel';
+    channelName.textContent = channel;
+    channelInitial.textContent = channel.charAt(0).toUpperCase();
+
+    // Stats
+    likeCount.textContent = data.viewCount || '0';
     videoDuration.textContent = data.duration || '';
     viewCount.textContent = data.viewCount || '0';
     publishDate.textContent = data.publishedAt || '';
 
-    // TL;DR
+    // TLDR
     tldrEl.innerHTML = renderMarkdown(data.tldr || '');
+
+    // Summary text (same as TLDR for now)
+    summaryTextEl.innerHTML = renderMarkdown(data.tldr || '');
 
     // Key Topics
     keyTopicsEl.innerHTML = '';
@@ -100,7 +110,7 @@
       });
     }
 
-    // Chapters
+    // Chapters / Timeline
     chaptersListEl.innerHTML = '';
     if (data.chapters && data.chapters.length > 0) {
       data.chapters.forEach(chapter => {
@@ -117,7 +127,7 @@
       });
     }
 
-    // Key Takeaways
+    // Key Takeaways / Highlights
     keyTakeawaysEl.innerHTML = '';
     if (data.keyTakeaways && data.keyTakeaways.length > 0) {
       data.keyTakeaways.forEach(takeaway => {
@@ -131,6 +141,9 @@
     shouldWatchEl.innerHTML = renderMarkdown(data.shouldWatch || '');
 
     results.classList.remove('hidden');
+
+    // Scroll to results
+    results.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function analyzeVideo(url) {
