@@ -102,7 +102,7 @@
       throw new Error('Invalid YouTube URL. Please enter a valid youtube.com or youtu.be link.');
     }
 
-    const response = await fetch('/api/analyze', {
+    const response = await fetch('/api/analyze.js', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
