@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import TranscriptClient from 'youtube-transcript-api';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -51,22 +50,79 @@ async function getVideoInfo(videoId) {
   };
 }
 
+function decodeHtmlEntities(text) {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/\n/g, ' ');
+}
+
 async function getTranscript(videoId) {
   try {
-    const client = new TranscriptClient();
-    await client.ready;
+    // First, fetch the video page to get caption track info
+    const videoPageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }
+    });
 
-    const transcript = await client.getTranscript(videoId);
+    const videoPageHtml = await videoPageResponse.text();
 
-    if (!transcript || transcript.length === 0) {
-      throw new Error('No transcript available');
+    // Extract captions URL from the page
+    const captionMatch = videoPageHtml.match(/"captionTracks":\s*(\[.*?\])/);
+    if (!captionMatch) {
+      throw new Error('No captions found');
     }
 
-    return transcript.map(item => ({
-      text: item.text,
-      offset: (item.start || 0) * 1000,
-      duration: (item.duration || 0) * 1000
+    let captionTracks;
+    try {
+      captionTracks = JSON.parse(captionMatch[1]);
+    } catch {
+      throw new Error('Failed to parse caption tracks');
+    }
+
+    if (!captionTracks || captionTracks.length === 0) {
+      throw new Error('No caption tracks available');
+    }
+
+    // Prefer English captions, fall back to first available
+    let captionTrack = captionTracks.find(t => t.languageCode === 'en' || t.languageCode?.startsWith('en'));
+    if (!captionTrack) {
+      captionTrack = captionTracks[0];
+    }
+
+    const captionUrl = captionTrack.baseUrl;
+    if (!captionUrl) {
+      throw new Error('No caption URL found');
+    }
+
+    // Fetch the actual captions
+    const captionResponse = await fetch(captionUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      }
+    });
+
+    const captionXml = await captionResponse.text();
+
+    // Parse the XML captions
+    const textMatches = [...captionXml.matchAll(/<text start="([\d.]+)" dur="([\d.]+)"[^>]*>([^<]*)<\/text>/g)];
+
+    if (textMatches.length === 0) {
+      throw new Error('No caption text found');
+    }
+
+    return textMatches.map(match => ({
+      text: decodeHtmlEntities(match[3]),
+      offset: parseFloat(match[1]) * 1000,
+      duration: parseFloat(match[2]) * 1000
     }));
+
   } catch (error) {
     console.error('Transcript fetch error:', error.message);
     throw new Error('This video does not have captions available.');
