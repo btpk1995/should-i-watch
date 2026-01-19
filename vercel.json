@@ -1,8 +1,0 @@
-{
-  "framework": null,
-  "installCommand": "npm install",
-  "buildCommand": null,
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/public/$1" }
-  ]
-}
