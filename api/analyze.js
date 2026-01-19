@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Innertube } from 'youtubei.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -22,37 +21,100 @@ function formatDuration(totalSeconds) {
 
 async function getTranscript(videoId) {
   try {
-    const youtube = await Innertube.create();
-    const info = await youtube.getInfo(videoId);
-    const transcriptInfo = await info.getTranscript();
+    // Fetch the video page to get caption tracks
+    const videoPageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      }
+    });
 
-    if (!transcriptInfo || !transcriptInfo.transcript || !transcriptInfo.transcript.content) {
-      throw new Error('No transcript available');
+    const html = await videoPageResponse.text();
+
+    // Extract video title
+    const titleMatch = html.match(/"title":"([^"]+)"/);
+    const title = titleMatch ? titleMatch[1].replace(/\\u0026/g, '&') : null;
+
+    // Extract duration
+    const durationMatch = html.match(/"lengthSeconds":"(\d+)"/);
+    const duration = durationMatch ? parseInt(durationMatch[1]) : 0;
+
+    // Find the captions URL in the page
+    const captionsMatch = html.match(/"captionTracks":\s*(\[.*?\])/);
+
+    if (!captionsMatch) {
+      throw new Error('No captions available for this video');
     }
 
-    const segments = transcriptInfo.transcript.content.body.initial_segments;
-
-    if (!segments || segments.length === 0) {
-      throw new Error('No transcript segments found');
+    let captionTracks;
+    try {
+      captionTracks = JSON.parse(captionsMatch[1]);
+    } catch {
+      throw new Error('Failed to parse caption tracks');
     }
 
-    const transcript = segments.map(segment => ({
-      text: segment.snippet.text,
-      offset: parseInt(segment.start_ms) || 0,
-      duration: parseInt(segment.end_ms) - parseInt(segment.start_ms) || 0
-    }));
+    if (!captionTracks || captionTracks.length === 0) {
+      throw new Error('No caption tracks found');
+    }
 
-    const title = info.basic_info?.title || null;
-    const duration = info.basic_info?.duration || 0;
+    // Prefer English captions, fall back to auto-generated or first available
+    let captionUrl = null;
+    for (const track of captionTracks) {
+      if (track.languageCode === 'en' || track.vssId?.includes('.en')) {
+        captionUrl = track.baseUrl;
+        break;
+      }
+    }
+
+    if (!captionUrl && captionTracks[0]?.baseUrl) {
+      captionUrl = captionTracks[0].baseUrl;
+    }
+
+    if (!captionUrl) {
+      throw new Error('No usable caption URL found');
+    }
+
+    // Fetch the captions in JSON3 format
+    const captionResponse = await fetch(`${captionUrl}&fmt=json3`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+      }
+    });
+
+    const captionData = await captionResponse.json();
+
+    if (!captionData.events) {
+      throw new Error('No caption events found');
+    }
+
+    const transcript = [];
+    for (const event of captionData.events) {
+      if (event.segs && event.tStartMs !== undefined) {
+        const text = event.segs
+          .map(seg => seg.utf8 || '')
+          .join('')
+          .trim()
+          .replace(/\n/g, ' ');
+
+        if (text) {
+          transcript.push({
+            text,
+            offset: event.tStartMs,
+            duration: event.dDurationMs || 0
+          });
+        }
+      }
+    }
+
+    if (transcript.length === 0) {
+      throw new Error('No transcript content found');
+    }
 
     return { transcript, title, duration };
   } catch (error) {
     console.error('Transcript fetch error:', error.message);
-    if (error.message?.includes('disabled') || error.message?.includes('No transcript')) {
+    if (error.message?.includes('No captions') || error.message?.includes('No caption') || error.message?.includes('No transcript')) {
       throw new Error('This video does not have captions available.');
-    }
-    if (error.message?.includes('not found') || error.message?.includes('unavailable')) {
-      throw new Error('Video not found or is unavailable.');
     }
     throw new Error('Failed to fetch video transcript. The video may be private or have captions disabled.');
   }
