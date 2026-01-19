@@ -1,0 +1,25 @@
+{
+  "name": "youtube-analyzer",
+  "version": "1.0.0",
+  "description": "Analyze YouTube videos to extract key topics and timestamps",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "youtube-transcript": "^1.2.1",
+    "youtubei.js": "^16.0.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^50.4.5"
+  }
+}
