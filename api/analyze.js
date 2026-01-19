@@ -5,6 +5,7 @@ const anthropic = new Anthropic({
 });
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY;
 
 function formatTimestamp(seconds) {
   const hrs = Math.floor(seconds / 3600);
@@ -65,7 +66,19 @@ async function getTranscript(videoId) {
   // Try multiple methods to get transcript
   const errors = [];
 
-  // Method 1: YouTube Innertube API
+  // Method 1: Supadata API (most reliable)
+  if (SUPADATA_API_KEY) {
+    try {
+      const transcript = await getTranscriptViaSupadata(videoId);
+      if (transcript && transcript.length > 0) {
+        return transcript;
+      }
+    } catch (e) {
+      errors.push(`Supadata: ${e.message}`);
+    }
+  }
+
+  // Method 2: YouTube Innertube API (fallback)
   try {
     const transcript = await getTranscriptViaInnertube(videoId);
     if (transcript && transcript.length > 0) {
@@ -75,7 +88,7 @@ async function getTranscript(videoId) {
     errors.push(`Innertube: ${e.message}`);
   }
 
-  // Method 2: Direct timedtext API
+  // Method 3: Direct timedtext API (fallback)
   try {
     const transcript = await getTranscriptViaTimedText(videoId);
     if (transcript && transcript.length > 0) {
@@ -87,6 +100,32 @@ async function getTranscript(videoId) {
 
   console.error('All transcript methods failed:', errors.join('; '));
   throw new Error('This video does not have captions available.');
+}
+
+async function getTranscriptViaSupadata(videoId) {
+  const response = await fetch(`https://api.supadata.ai/v1/youtube/transcript?videoId=${videoId}&text=false`, {
+    headers: {
+      'x-api-key': SUPADATA_API_KEY,
+    }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Supadata API error: ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!data.content || data.content.length === 0) {
+    throw new Error('No transcript content from Supadata');
+  }
+
+  // Convert Supadata format to our format
+  return data.content.map(item => ({
+    text: item.text,
+    offset: (item.offset || 0) * 1000,
+    duration: (item.duration || 2) * 1000
+  }));
 }
 
 async function getTranscriptViaInnertube(videoId) {
