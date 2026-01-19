@@ -6,6 +6,7 @@
   const analyzeBtn = document.getElementById('analyze-btn');
   const errorMessage = document.getElementById('error-message');
   const results = document.getElementById('results');
+  const loadingOverlay = document.getElementById('loading-overlay');
   const videoThumbnail = document.getElementById('video-thumbnail');
   const videoLink = document.getElementById('video-link');
   const videoTitle = document.getElementById('video-title');
@@ -59,6 +60,7 @@
   function setLoading(loading) {
     analyzeBtn.disabled = loading;
     analyzeBtn.classList.toggle('loading', loading);
+    loadingOverlay.classList.toggle('visible', loading);
   }
 
   function escapeHtml(text) {
