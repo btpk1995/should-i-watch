@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { YoutubeTranscriptApi } from 'youtube-transcript-api';
+import TranscriptClient from 'youtube-transcript-api';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -50,30 +50,19 @@ async function getVideoInfo(videoId) {
 
 async function getTranscript(videoId) {
   try {
-    const transcriptList = await YoutubeTranscriptApi.listTranscripts(videoId);
+    const client = new TranscriptClient();
+    await client.ready;
 
-    // Try to get English transcript first
-    let transcript;
-    try {
-      transcript = await transcriptList.findTranscript(['en', 'en-US', 'en-GB']);
-    } catch {
-      // Fall back to any available transcript
-      const available = transcriptList.transcripts;
-      if (available && available.length > 0) {
-        transcript = available[0];
-      }
-    }
+    const transcript = await client.getTranscript(videoId);
 
-    if (!transcript) {
+    if (!transcript || transcript.length === 0) {
       throw new Error('No transcript available');
     }
 
-    const data = await transcript.fetch();
-
-    return data.map(item => ({
+    return transcript.map(item => ({
       text: item.text,
-      offset: item.start * 1000,
-      duration: item.duration * 1000
+      offset: (item.start || 0) * 1000,
+      duration: (item.duration || 0) * 1000
     }));
   } catch (error) {
     console.error('Transcript fetch error:', error.message);
