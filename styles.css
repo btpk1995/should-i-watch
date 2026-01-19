@@ -306,6 +306,7 @@ body {
   grid-template-columns: 380px 1fr;
   gap: 2rem;
   margin-top: 1.5rem;
+  align-items: stretch;
 }
 
 /* Left Column */
@@ -509,8 +510,6 @@ body {
 
 .panel-content {
   padding: 1.5rem;
-  max-height: 600px;
-  overflow-y: auto;
 }
 
 /* Content Sections */
