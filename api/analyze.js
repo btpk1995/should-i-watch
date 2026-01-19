@@ -318,15 +318,24 @@ Important rules:
 
   const parsed = JSON.parse(jsonMatch[0]);
 
+  // Ensure all required fields exist with defaults
+  const result = {
+    tldr: parsed.tldr || '',
+    keyTopics: Array.isArray(parsed.keyTopics) ? parsed.keyTopics : [],
+    chapters: Array.isArray(parsed.chapters) ? parsed.chapters : [],
+    keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : [],
+    shouldWatch: parsed.shouldWatch || ''
+  };
+
   // Format chapter timestamps
-  if (parsed.chapters) {
-    parsed.chapters = parsed.chapters.map(chapter => ({
+  if (result.chapters.length > 0) {
+    result.chapters = result.chapters.map(chapter => ({
       ...chapter,
-      timestampFormatted: formatTimestamp(chapter.timestamp)
+      timestampFormatted: formatTimestamp(chapter.timestamp || 0)
     }));
   }
 
-  return parsed;
+  return result;
 }
 
 export default async function handler(req, res) {
