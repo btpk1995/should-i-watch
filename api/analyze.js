@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { YoutubeTranscriptApi } from 'youtube-transcript-api';
 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -22,7 +23,6 @@ function formatDuration(totalSeconds) {
 }
 
 function parseDuration(duration) {
-  // Parse ISO 8601 duration (PT1H2M3S)
   const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
   if (!match) return 0;
   const hours = parseInt(match[1] || 0);
@@ -49,121 +49,36 @@ async function getVideoInfo(videoId) {
 }
 
 async function getTranscript(videoId) {
-  // Method 1: Try fetching from YouTube's timedtext API directly
-  const languages = ['en', 'en-US', 'en-GB', 'a.en', 'asr'];
+  try {
+    const transcriptList = await YoutubeTranscriptApi.listTranscripts(videoId);
 
-  for (const lang of languages) {
+    // Try to get English transcript first
+    let transcript;
     try {
-      const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}&fmt=json3`;
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.events && data.events.length > 0) {
-          return parseTranscriptEvents(data.events);
-        }
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-
-  // Method 2: Try auto-generated captions
-  try {
-    const url = `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr&fmt=json3`;
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      }
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.events && data.events.length > 0) {
-        return parseTranscriptEvents(data.events);
+      transcript = await transcriptList.findTranscript(['en', 'en-US', 'en-GB']);
+    } catch {
+      // Fall back to any available transcript
+      const available = transcriptList.transcripts;
+      if (available && available.length > 0) {
+        transcript = available[0];
       }
     }
-  } catch (e) {
-    // Continue to next method
-  }
 
-  // Method 3: Scrape from video page
-  try {
-    const videoPageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      }
-    });
-
-    const html = await videoPageResponse.text();
-
-    // Find caption tracks in the page
-    const captionsMatch = html.match(/"captionTracks":\s*(\[.*?\])/);
-
-    if (captionsMatch) {
-      const captionTracks = JSON.parse(captionsMatch[1]);
-
-      // Find English captions
-      let captionUrl = null;
-      for (const track of captionTracks) {
-        if (track.languageCode === 'en' || track.vssId?.includes('en')) {
-          captionUrl = track.baseUrl;
-          break;
-        }
-      }
-
-      if (!captionUrl && captionTracks[0]?.baseUrl) {
-        captionUrl = captionTracks[0].baseUrl;
-      }
-
-      if (captionUrl) {
-        const captionResponse = await fetch(`${captionUrl}&fmt=json3`);
-        const captionData = await captionResponse.json();
-
-        if (captionData.events) {
-          return parseTranscriptEvents(captionData.events);
-        }
-      }
+    if (!transcript) {
+      throw new Error('No transcript available');
     }
-  } catch (e) {
-    console.error('Scrape method failed:', e.message);
+
+    const data = await transcript.fetch();
+
+    return data.map(item => ({
+      text: item.text,
+      offset: item.start * 1000,
+      duration: item.duration * 1000
+    }));
+  } catch (error) {
+    console.error('Transcript fetch error:', error.message);
+    throw new Error('This video does not have captions available.');
   }
-
-  throw new Error('No captions available for this video');
-}
-
-function parseTranscriptEvents(events) {
-  const transcript = [];
-
-  for (const event of events) {
-    if (event.segs && event.tStartMs !== undefined) {
-      const text = event.segs
-        .map(seg => seg.utf8 || '')
-        .join('')
-        .trim()
-        .replace(/\n/g, ' ');
-
-      if (text) {
-        transcript.push({
-          text,
-          offset: event.tStartMs,
-          duration: event.dDurationMs || 0
-        });
-      }
-    }
-  }
-
-  if (transcript.length === 0) {
-    throw new Error('No transcript content found');
-  }
-
-  return transcript;
 }
 
 function prepareTranscriptForAnalysis(transcript) {
