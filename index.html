@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube Video Analyzer - Is It Worth Watching?</title>
+  <title>Should I Watch? - YouTube Video Analyzer</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📺</text></svg>">
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>YouTube Video Analyzer</h1>
+      <h1>Should I Watch?</h1>
       <p class="subtitle">Find out if a video is worth your time in seconds</p>
     </header>
 
@@ -35,8 +35,9 @@
       <div id="error-message" class="error-message"></div>
 
       <div id="results" class="results hidden">
-        <div class="video-preview">
-          <a id="video-link" href="#" target="_blank" rel="noopener">
+        <!-- Video Header -->
+        <div class="video-header">
+          <a id="video-link" href="#" target="_blank" rel="noopener" class="thumbnail-link">
             <img id="video-thumbnail" src="" alt="Video thumbnail">
             <div class="play-overlay">
               <svg viewBox="0 0 24 24" fill="currentColor">
@@ -44,20 +45,46 @@
               </svg>
             </div>
           </a>
-          <div class="video-info">
+          <div class="video-meta">
             <h2 id="video-title"></h2>
-            <p id="video-duration" class="duration"></p>
+            <p class="meta-line">
+              <span id="channel-name"></span> |
+              <span id="video-duration"></span> |
+              <span id="view-count"></span> views |
+              <span id="publish-date"></span>
+            </p>
+            <a id="watch-link" href="#" target="_blank" rel="noopener" class="watch-btn">Watch on YouTube</a>
           </div>
         </div>
 
+        <!-- TL;DR Section -->
         <section class="summary-section">
-          <h3>Quick Summary</h3>
-          <p id="summary"></p>
+          <h3>📝 TL;DR <span class="section-hint">(30 seconds read)</span></h3>
+          <p id="tldr"></p>
         </section>
 
+        <!-- Key Topics Section -->
         <section class="topics-section">
-          <h3>Top 10 Topics Discussed</h3>
-          <div id="topics-list" class="topics-list"></div>
+          <h3>🔥 Key Topics Covered</h3>
+          <ul id="key-topics" class="key-topics-list"></ul>
+        </section>
+
+        <!-- Chapters Section -->
+        <section class="chapters-section">
+          <h3>⏰ Timestamped Chapters</h3>
+          <div id="chapters-list" class="chapters-list"></div>
+        </section>
+
+        <!-- Key Takeaways Section -->
+        <section class="takeaways-section">
+          <h3>💡 Key Takeaways</h3>
+          <ol id="key-takeaways" class="takeaways-list"></ol>
+        </section>
+
+        <!-- Should Watch Section -->
+        <section class="verdict-section">
+          <h3>🎯 Verdict</h3>
+          <p id="should-watch" class="verdict"></p>
         </section>
       </div>
     </main>

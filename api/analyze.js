@@ -32,7 +32,7 @@ function parseDuration(duration) {
 }
 
 async function getVideoInfo(videoId) {
-  const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
+  const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${YOUTUBE_API_KEY}`;
   const response = await fetch(url);
   const data = await response.json();
 
@@ -43,7 +43,10 @@ async function getVideoInfo(videoId) {
   const video = data.items[0];
   return {
     title: video.snippet.title,
+    channelTitle: video.snippet.channelTitle,
     duration: parseDuration(video.contentDetails.duration),
+    viewCount: video.statistics?.viewCount || '0',
+    publishedAt: video.snippet.publishedAt,
     description: video.snippet.description
   };
 }
@@ -90,45 +93,66 @@ function prepareTranscriptForAnalysis(transcript) {
   return { fullText, segments, totalDuration };
 }
 
-async function analyzeWithClaude(transcriptText) {
+function formatViewCount(count) {
+  const num = parseInt(count);
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + 'M';
+  } else if (num >= 1000) {
+    return (num / 1000).toFixed(1) + 'K';
+  }
+  return num.toString();
+}
+
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function analyzeWithClaude(transcriptText, videoInfo) {
   const prompt = `You are analyzing a YouTube video transcript to help viewers decide if it's worth watching.
+
+Video Title: ${videoInfo.title}
+Channel: ${videoInfo.channelTitle}
+Duration: ${formatDuration(videoInfo.duration)}
 
 Here is the transcript with timestamps:
 
 ${transcriptText}
 
-Please analyze this transcript and provide:
+Analyze this transcript and respond with ONLY valid JSON in this exact format:
 
-1. A brief summary (2-3 sentences) of what this video is about and who would find it valuable.
-
-2. The top 10 most important topics or key points discussed in the video. For each topic:
-   - Give it a concise, descriptive title (5-8 words)
-   - Write a brief description (1-2 sentences) explaining what is discussed
-   - Identify the timestamp (in seconds) where this topic begins
-
-Order the topics by their appearance in the video (chronologically), not by importance.
-
-Respond ONLY with valid JSON in this exact format:
 {
-  "summary": "Your 2-3 sentence summary here",
-  "topics": [
+  "tldr": "2-3 sentences capturing: 1) What the video is about, 2) Main purpose/value to viewer, 3) Who should watch (target audience)",
+  "keyTopics": [
+    "Standalone insight written as a complete thought",
+    "Action-oriented phrasing covering major themes"
+  ],
+  "chapters": [
     {
-      "title": "Topic Title Here",
-      "description": "Brief description of what is discussed",
-      "timestamp": 0
+      "timestamp": 0,
+      "title": "Chapter title"
     }
-  ]
+  ],
+  "keyTakeaways": [
+    "Specific lesson, quote, stat, or framework",
+    "What viewers should remember or do"
+  ],
+  "shouldWatch": "Brief recommendation: who should watch and who can skip"
 }
 
-Important:
-- Extract EXACTLY 10 topics (or fewer if the video doesn't have 10 distinct topics)
-- Timestamps should be in seconds (integers)
-- Make titles specific and informative, not generic like "Introduction" unless that's truly what it is
-- Focus on substantive content, not intros/outros unless they contain important information`;
+Important rules:
+- tldr: 2-3 concise sentences for a 30-second read
+- keyTopics: 5-8 bullet points covering all major themes chronologically
+- chapters: 6-12 timestamped chapters covering all major sections (timestamps in seconds)
+- keyTakeaways: 3-7 numbered actionable insights - the most valuable 20% of content
+- shouldWatch: Clear "watch/don't watch" signal with target audience
+- Keep everything concise but complete
+- Write for speed reading (short sentences)
+- Bold key phrases using **text** markdown`;
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 2000,
+    max_tokens: 2500,
     messages: [
       {
         role: 'user',
@@ -146,10 +170,13 @@ Important:
 
   const parsed = JSON.parse(jsonMatch[0]);
 
-  parsed.topics = parsed.topics.map(topic => ({
-    ...topic,
-    timestampFormatted: formatTimestamp(topic.timestamp)
-  }));
+  // Format chapter timestamps
+  if (parsed.chapters) {
+    parsed.chapters = parsed.chapters.map(chapter => ({
+      ...chapter,
+      timestampFormatted: formatTimestamp(chapter.timestamp)
+    }));
+  }
 
   return parsed;
 }
@@ -191,14 +218,20 @@ export default async function handler(req, res) {
     }
 
     const { fullText, totalDuration } = prepareTranscriptForAnalysis(transcript);
-    const analysis = await analyzeWithClaude(fullText);
+    const analysis = await analyzeWithClaude(fullText, videoInfo);
 
     return res.status(200).json({
       videoId,
       title: videoInfo.title,
+      channelTitle: videoInfo.channelTitle,
       duration: formatDuration(videoInfo.duration || totalDuration),
-      summary: analysis.summary,
-      topics: analysis.topics
+      viewCount: formatViewCount(videoInfo.viewCount),
+      publishedAt: formatDate(videoInfo.publishedAt),
+      tldr: analysis.tldr,
+      keyTopics: analysis.keyTopics,
+      chapters: analysis.chapters,
+      keyTakeaways: analysis.keyTakeaways,
+      shouldWatch: analysis.shouldWatch
     });
   } catch (error) {
     console.error('Analysis error:', error);
