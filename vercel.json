@@ -1,9 +1,8 @@
 {
-  "buildCommand": "echo 'No build needed'",
-  "outputDirectory": "public",
-  "functions": {
-    "api/*.js": {
-      "runtime": "@vercel/node@3"
-    }
-  }
+  "framework": null,
+  "installCommand": "npm install",
+  "buildCommand": null,
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/public/$1" }
+  ]
 }
